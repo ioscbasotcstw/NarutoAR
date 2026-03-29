@@ -54,13 +54,14 @@ Since this project relies on custom assets, ensure you maintain the following di
    ```bash
    pip install -r requirements.txt
    ```
+3. **Add API Key**: Create a `.env` file containing your Google GenAI API key, example `GEMINI_API_KEY="your-api-key"`
 
-3. **Run the Application**:
+4. **Run the Application**:
    ```bash
    python main.py
    ```
 
-4. **In-Game Flow**:
+5. **In-Game Flow**:
    * The terminal will prompt you to enter a **username** to load your save data.
    * You will be prompted to enter your chakra level and reset your chakra—this is optional, then choose whether it is just a jutsu (*Chidori*, *Death Reaper*, or *Water Prison*) or the *Sharingan*. If you choose both jutsu and Sharingan, enter the jutsu first, then the Sharingan.
    * Once the camera feed opens, perform the required hand signs to activate Jutsus, or open your eyes to activate Dojutsu.
