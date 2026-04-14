@@ -8,7 +8,7 @@ Experience the thrill of weaving signs to cast *Chidori*, equipping iconic ninja
 
 | Chidori | Sharingan |
 |:---:|:---:|
-| <img src="src/assets/pics/4.png" width="480"> | <img src="src/assets/pics/7.png" width="480"> |
+| <img src="src/assets/pics/7.png" width="480"> | <img src="src/assets/pics/4.png" width="480"> |
 
 ---
 
