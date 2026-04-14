@@ -66,8 +66,9 @@ Since this project relies on custom assets, ensure you maintain the appropriate 
    ```bash
    pip install -r requirements.txt
    ```
+3. **Add API Key**: Create a `.env` file containing your Google GenAI API key, example `GEMINI_API_KEY="your-api-key"`
 
-3. **Run the Application**:
+4. **Run the Application**:
    ```bash
    python3 -m src.naruto_pygame.naruto_ar_pygame
    ```
