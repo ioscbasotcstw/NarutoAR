@@ -6,7 +6,20 @@ from typing import Any
 
 
 class JutsuFactory:
-    def __init__(self, cached_jutsu_effect: Any, precomputed_data: Any, jutsu_path: str, jutsu_name: str, bg_image: cv2.Mat, bg_resized: bool, is_sequantial: bool, has_image: bool, is_hand_jutsu: bool, radius: int, current_chakra: float, scale_factor_for_image_jutsu: float = 3.5):
+    def __init__(self, 
+                cached_jutsu_effect: Any, 
+                precomputed_data: Any, 
+                jutsu_path: str, 
+                jutsu_name: str, 
+                bg_image: cv2.Mat, 
+                bg_resized: bool, 
+                is_sequantial: bool, 
+                has_image: bool, 
+                is_hand_jutsu: bool, 
+                radius: int, 
+                current_chakra: float, 
+                scale_factor_for_image_jutsu: float = 3.5
+        ):
         self.cached_jutsu_effect = cached_jutsu_effect
         self.precomputed_data = precomputed_data 
         self.jutsu_path = jutsu_path
@@ -21,7 +34,7 @@ class JutsuFactory:
         self.scale_factor_for_image_jutsu = scale_factor_for_image_jutsu  
 
     def draw_hand_jutsu_effect(self, frame, dt, holistic_results) -> cv2.Mat:
-        """"""
+        """""Draws hand-based jutsu effects on the frame based on detected hand landmarks."""
         h, w = frame.shape[:2]
         hands_to_process = []
         if holistic_results.left_hand_landmarks:
@@ -46,7 +59,7 @@ class JutsuFactory:
         return frame
     
     def draw_no_hand_jutsu_effect(self, frame, dt, segmenter_results) -> cv2.Mat:
-        """"""
+        """"Draws background-based jutsu effects on the frame based on segmenter results."""
         no_hand_jutsu = JutsuPerformedAsBackgroundEffect(bg_image=self.bg_image, bg_resized=self.bg_resized)
         frame, _ = no_hand_jutsu.apply(frame, segmenter_results)
                 
@@ -55,7 +68,7 @@ class JutsuFactory:
         return frame
     
     def draw_water_prison_jutsu_effect(self, frame, dt, holistic_results, mp_holistic) -> cv2.Mat: 
-        """"""      
+        """Draws the Water Prison Jutsu effect on the frame based on pose landmarks."""
         h, w = frame.shape[:2]
         center_x, center_y = w // 2, h // 2
 
@@ -77,8 +90,8 @@ class JutsuFactory:
         self.current_chakra = max(0, self.current_chakra - (drain_per_second * dt))
         return frame
     
-    def draw_jutsu_effect(self, frame, dt, blindness_stage, jutsu_active, target_sequence, history, holistic_results, segmenter_results, mp_holistic) -> tuple:
-        """"""
+    def draw_jutsu_effect(self, frame, dt, blindness_stage, jutsu_active, disable_bg, target_sequence, history, holistic_results, segmenter_results, mp_holistic) -> tuple:
+        """Determines which jutsu effect to draw based on the current state and applies it to the frame."""
         if blindness_stage == "heavy":
             return frame, self.current_chakra
         
@@ -89,9 +102,6 @@ class JutsuFactory:
             return self.draw_hand_jutsu_effect(frame=frame, dt=dt, holistic_results=holistic_results), self.current_chakra
 
         if not jutsu_active:
-            if target_sequence:
-                cv2.putText(frame, f"Required: {', '.join(target_sequence)}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (9, 154, 237), 2)
-                cv2.putText(frame, f"History: {', '.join(history)}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (9, 180, 237), 2)
             return frame, self.current_chakra
         
         if self.has_image:
@@ -103,7 +113,7 @@ class JutsuFactory:
         if self.has_image:
             if self.is_hand_jutsu and jutsu_type == "base_hand":
                 return self.draw_hand_jutsu_effect(frame=frame, dt=dt, holistic_results=holistic_results), self.current_chakra
-            elif not self.is_hand_jutsu and jutsu_type == "background_base":
+            elif not self.is_hand_jutsu and jutsu_type == "background_base" and disable_bg:
                 return self.draw_no_hand_jutsu_effect(frame=frame, dt=dt, segmenter_results=segmenter_results), self.current_chakra
         elif not self.has_image and jutsu_type == "cv2_base":
             return self.draw_water_prison_jutsu_effect(frame=frame, dt=dt, holistic_results=holistic_results, mp_holistic=mp_holistic), self.current_chakra

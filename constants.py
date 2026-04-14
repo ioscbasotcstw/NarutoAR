@@ -5,6 +5,28 @@ SIGNS_MAPPING = {
     'tori': 'bird', 'u': 'hare', 'uma': 'horse', 'ushi': 'ox'
 }
 
+CORRESPONDING_VISUAL_TO_SIGNS = {
+    'ram': 'src/assets/jutsu/signs/ram.jpg',
+    'boar': 'src/assets/jutsu/signs/boar.jpg',
+    'dog': 'src/assets/jutsu/signs/dog.jpg',
+    'snake': 'src/assets/jutsu/signs/snake.jpg',
+    'rat': 'src/assets/jutsu/signs/rat.jpg',
+    'monkey': 'src/assets/jutsu/signs/monkey.jpg',
+    'dragon': 'src/assets/jutsu/signs/dragon.jpg',
+    'tiger': 'src/assets/jutsu/signs/tiger.jpg',
+    'bird': 'src/assets/jutsu/signs/bird.jpg',
+    'hare': 'src/assets/jutsu/signs/hare.jpg',
+    'horse': 'src/assets/jutsu/signs/horse.jpg',
+    'ox': 'src/assets/jutsu/signs/ox.jpg',
+}
+
+CORRESPONDING_NARUTO_STYLE = {
+    "obito_mask": "src/assets/styles/obito_mask.png",
+    "kakashi_mask": "src/assets/styles/kakashi_mask.png",
+    "kakashi_hair": "src/assets/styles/kakashi_hair.png",
+    "hidden_leaf_headband": "src/assets/styles/hidden_leaf_headband.png",
+}
+
 JUTSU_CATALOG = {
     "chidori": {
         "type": "base_hand",
@@ -51,7 +73,6 @@ SHARINGAN_STAGES = {
     },
     "mangekyou": {
         "chakra_cost": 25, 
-        # "image": "src/assets/three_great_dojutsu/sharingan/mangekyou/itachi.png"
     },
 }
 
@@ -73,9 +94,14 @@ MANGEKYOU_USERS = {
     "indra" : ["amaterasu", "susanoo"],
 }
 
+# List
+STYLES = ["obito_fullfacemask", "kakashi_mask", "kakashi_hair", "hidden_leaf_headband"]
+BACKGROUNDS = ["src/assets/backgrounds/akatsuki.jpeg", "src/assets/backgrounds/infinite_tsukuyomi.png", "src/assets/backgrounds/konoha.jpg", "src/assets/backgrounds/naruto_forest.jpg"]
+
 # Strings
 YOLO_MODEL_PATH = "src/models/naruto_signs_detection.onnx"
 MANGEKYOU_PATH  = "src/assets/three_great_dojutsu/sharingan/mangekyou/"
+SHARINGAN_PATH  = "src/assets/three_great_dojutsu/sharingan/"
 APP_NAME        = "Naruto AR"
 SAVE_FILE       = "app_cache.json"
 USER_INFO_FILE  = "user_info.naruto"

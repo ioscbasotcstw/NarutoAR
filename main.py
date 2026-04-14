@@ -1,5 +1,3 @@
-# NarutoAR: An Augmented Reality Experience Inspired by Naruto and tysuprawee
-
 """
   ____              __    __           __                                  
 /\  _`\           /\ \__/\ \__       /\ \                                 
@@ -324,7 +322,7 @@ class NarutoAR:
                     frame, self.current_chakra = jutsu_factory.draw_jutsu_effect(frame=frame, dt=dt, blindness_stage=self.blindness_stage, jutsu_active=self.jutsu_active, target_sequence=self.target_sequence, history=self.history, holistic_results=holistic_results, segmenter_results=segmenter_results, mp_holistic=self.mp_holistic)
                     
                     dojutsu_factory.current_chakra = self.current_chakra
-                    frame, self.blindness_counter, self.current_chakra = dojutsu_factory.draw_dojutsu_effect(frame=frame, dt=dt, x=x, y=y, blindness_stage=self.blindness_stage, center=self.center_point, kamui_active=self.kamui_active, holistic_results=holistic_results, mp_holistic=self.mp_holistic)
+                    frame, self.blindness_counter, self.current_chakra = dojutsu_factory.draw_dojutsu_effect(frame=frame, dt=dt, x=x, y=y, blindness_stage=self.blindness_stage, center=self.center_point, kamui_active=self.kamui_active, disable_mangekyou=False, disable_susanoo=False, holistic_results=holistic_results, mp_holistic=self.mp_holistic)
                     
                     # print(f"Blindness Counter from draw: {self.blindness_counter}, Blindness Accumulator: {self.blindness_accumulator}")
                 frame = chakra_level(frame=frame, current_chakra=self.current_chakra, base_chakra_level=self.base_chakra_level, chakra_reset=self.chakra_reset) 
@@ -357,7 +355,7 @@ class NarutoAR:
                     break
                 elif key == ord('r'):
                     self.jutsu_active = False
-                    self.is_jutsu_performed = False
+                    # self.is_jutsu_performed = False
                     self.cached_jutsu_effect = None
                     self.history = []
                     print("Reset sequence.")
@@ -386,17 +384,24 @@ def main():
     final_load_string = process_techniques(current_user, player_data, choices_list)
     print(f"Loading techniques: {final_load_string}")
     app.load_technique(final_load_string)
-    app.run()
 
-    save_player_data(
-        current_user, 
-        chakra=app.current_chakra, 
-        resets=app.chakra_reset, 
-        base_chakra_level=app.base_chakra_level, 
-        blindness=app.blindness_stage, 
-        blindness_counter=app.blindness_accumulator
-    )
-    print_session_results(app)
+    try:
+        app.run()
+    except:
+        pass
+    finally:
+        save_player_data(
+            current_user, 
+            chakra=app.current_chakra, 
+            resets=app.chakra_reset, 
+            base_chakra_level=app.base_chakra_level, 
+            blindness=app.blindness_stage, 
+            blindness_counter=app.blindness_accumulator
+        )
+        print_session_results(app)
 
 if __name__ == "__main__":
-    main()
+    if False:
+        main()
+    else:
+        print("Priority right now is PyGame, so old terminal based run still exist, but not supported anymore.")

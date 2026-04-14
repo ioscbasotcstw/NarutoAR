@@ -58,7 +58,7 @@ class JutsuPerformedAsBackgroundEffect(TechniqueInterface):
             self.bg_resized = True
 
         mask = segmenter_results.segmentation_mask
-        condition = np.stack((mask, ) * 3, axis=-1) > 0.1
+        condition = np.stack((mask, ) * 3, axis=-1) > 0.95
         frame = np.where(condition, frame, self.bg_image).astype(np.uint8)
         return frame, None
     
@@ -69,6 +69,8 @@ class WaterPrisonJutsuEffect(TechniqueInterface):
         self.center_y = center_y
         self.radius = int(radius)
         self.precomputed_data = precomputed_data
+        50, 170, 255
+        self.color = np.array([50, 170, 255], dtype=np.float32) # RGB format (Cyan/Blue)
 
     def apply(self, frame: cv2.Mat):
         """Applies the precomputed water effects to a specific spot on the frame."""
@@ -80,11 +82,12 @@ class WaterPrisonJutsuEffect(TechniqueInterface):
         x1, x2 = cx - self.radius, cx + self.radius
         roi = padded_frame[y1:y2, x1:x2]
         distorted = cv2.remap(roi, map_x, map_y, interpolation=cv2.INTER_LINEAR)
-        color = np.array([255, 170, 50], dtype=np.float32) # BGR format (Cyan/Blue)
         alpha = 0.15 + (0.65 * shading)
-        tinted = (distorted * (1 - alpha)) + (color * alpha)
-        tinted = np.clip(tinted + highlight, 0, 255)
+        tinted = (distorted * (1 - alpha)) + (self.color * alpha)
+        tinted += highlight
+        np.clip(tinted , 0, 255, out=tinted)
         result_roi = (tinted * circle_mask) + (roi * (1 - circle_mask))
-        padded_frame[y1:y2, x1:x2] = result_roi.astype(np.uint8)
+        padded_frame[y1:y2, x1:x2] = result_roi.astype(np.uint8, copy=False)
         h, w = frame.shape[:2]
-        return padded_frame[self.radius:self.radius+h, self.radius:self.radius+w], None
+        final_frame = padded_frame[self.radius:self.radius+h, self.radius:self.radius+w].copy()
+        return final_frame, None

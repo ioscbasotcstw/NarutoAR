@@ -6,4 +6,4 @@ protobuf==4.25.8
 python-dotenv==1.2.1
 torch==2.2.2
 ultralytics==8.4.15
- 
+pygame==2.6.1

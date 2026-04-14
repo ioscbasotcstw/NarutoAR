@@ -6,7 +6,8 @@ import json
 import cv2
 import numpy as np
 from typing import List
-from PIL import Image
+from PIL import Image, ImageSequence
+import pygame
 from evolution_of_sharingan import generate
 from constants import (
     MANGEKYOU_ABILITIES, 
@@ -14,13 +15,13 @@ from constants import (
     MIN_CHAKRA_RESET, 
     MAX_CHAKRA_RESET, 
     SAVE_FILE, 
-    MANGEKYOU_PATH,
     MINIMUM_CHAKRA_LEVEL, 
     MAXIMUM_CHAKRA_LEVEL, 
     JUTSU_CATALOG, 
     SHARINGAN_STAGES,
     USER_INFO_FILE
 )
+from typing import Any
 
 def overlay_image(frame: np.ndarray, ov: np.ndarray, x: int, y: int) -> np.ndarray:
     """Overlays image 'ov' onto 'frame' at center coordinates (x, y) with alpha blending."""
@@ -50,10 +51,15 @@ def overlay_image(frame: np.ndarray, ov: np.ndarray, x: int, y: int) -> np.ndarr
         return frame
 
     # Blend
+    ov_alpha = ov_cropped[:, :, 3:4] / 255.0
     ov_bgr = ov_cropped[:, :, :3]
-    ov_alpha = ov_cropped[:, :, 3] / 255.
-    ov_alpha = ov_alpha[:, :, np.newaxis]
-    frame[y1:y2, x1:x2] = (ov_alpha * ov_bgr + (1.0 - ov_alpha) * frame_roi).astype(np.uint8)
+
+    roi_float = frame_roi.astype(np.float32)
+    diff = ov_bgr.astype(np.float32) - roi_float
+    diff *= ov_alpha
+    roi_float += diff 
+
+    frame[y1:y2, x1:x2] = roi_float.astype(np.uint8, copy=False)
     return frame
 
 def get_distance(p1, p2, w: int, h: int) -> float:
@@ -63,18 +69,16 @@ def get_distance(p1, p2, w: int, h: int) -> float:
     return math.hypot(x2 - x1, y2 - y1)
 
 def load_gif_frames(path): 
-    """Loads a GIF from the hard drive ONCE and returns a list of frames."""
-    gif = Image.open(path)
-    frames = []
-    try:
-        while True:
-            frame_rgba = gif.convert("RGBA")
-            cv_frame = cv2.cvtColor(np.array(frame_rgba), cv2.COLOR_RGBA2BGRA)
+    """Loads a GIF and returns a list of frames with minimal memory churn."""
+    with Image.open(path) as gif:
+        frames = []
+        
+        for frame in ImageSequence.Iterator(gif):
+            frame_rgba = frame.convert("RGBA")   
+            cv_frame = np.array(frame_rgba)
             frames.append(cv_frame)
-            gif.seek(gif.tell() + 1)
-    except EOFError:
-        pass
-    return frames
+            
+        return frames
 
 def get_animated_frame(frames, current_index, last_time, fps=15):
     """Returns the current animation frame and updates timers."""
@@ -143,13 +147,8 @@ def get_user_data(username: str):
                 return {"stage": stage, "owner": owner, "techniques": techniques}    
     return None 
 
-def draw_eye_bleeding(frame, face_results, technique):
+def draw_eye_bleeding(frame, ov, face_results, technique):
     """Draws blood dripping from the specific eye required by the technique."""
-    image_path = os.path.join(MANGEKYOU_PATH, "blood_bleed_from_eye.png")
-    if not os.path.exists(image_path):
-        return frame
-    
-    ov = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
     if ov is None or not face_results: 
         return frame
     
@@ -176,6 +175,9 @@ def draw_eye_bleeding(frame, face_results, technique):
 
     desire_height = int((chin_y - eyelid_y) * 0.8)
     desired_width = int(desire_height * (ov.shape[1] / ov.shape[0]))
+
+    if desired_width <= 0 or desire_height <= 0:
+        return frame
 
     ov_resized = cv2.resize(ov, (desired_width, desire_height))
     center_y = eyelid_y + (desire_height // 2)
@@ -234,32 +236,29 @@ def save_player_data(username, chakra, resets, base_chakra_level=MINIMUM_CHAKRA_
     with open(SAVE_FILE, "w") as f:
         json.dump(all_data, f, indent=4)
 
-##########################################      C     ##########################################################
-##########################################      H     ##########################################################
-##########################################      A     ##########################################################
-##########################################      N     ##########################################################
-##########################################      G     ##########################################################
-##########################################      E     ##########################################################
 def create_water_maps(radius):
     """Precomputes the distortion, shadows, and reflections."""
     size = int(radius * 2)
     center = radius
 
-    x, y = np.meshgrid(np.arange(size), np.arange(size))
+    coords = np.arange(size, dtype=np.float32)
+    x, y = np.meshgrid(coords, coords)
     dx, dy = x - center, y - center
     r = np.sqrt(dx**2 + dy**2)
 
     inside = r < radius
+    map_x, map_y = x, y
 
-    map_x, map_y = x.astype(np.float32), y.astype(np.float32)
     bulge_strength = 0.6 
     
-    r_norm = r[inside] / radius
+    r_inside = r[inside]
+    r_norm = r_inside / radius
     r_new = radius * (r_norm ** (1.0 + bulge_strength))
-    r_safe = np.where(r[inside] == 0, 1, r[inside])
+    r_safe = np.where(r_inside == 0, 1, r_inside)
     
-    map_x[inside] = center + dx[inside] * (r_new / r_safe)
-    map_y[inside] = center + dy[inside] * (r_new / r_safe)
+    ratio = r_new / r_safe
+    map_x[inside] = center + dx[inside] * ratio
+    map_y[inside] = center + dy[inside] * ratio
 
     shading = np.zeros((size, size, 1), dtype=np.float32)
     shading[inside, 0] = r_norm ** 2.5 
@@ -271,8 +270,7 @@ def create_water_maps(radius):
                 color=(255, 255, 255), thickness=-1)
     highlight = cv2.GaussianBlur(highlight, (0, 0), sigmaX=radius*0.08)
 
-    circle_mask = np.zeros((size, size, 1), dtype=np.float32)
-    circle_mask[inside] = 1.0
+    circle_mask = inside.astype(np.float32)[..., np.newaxis]
 
     return map_x, map_y, shading, highlight, circle_mask
 
@@ -290,14 +288,28 @@ def get_optional_int(prompt: str, min_val: int, max_val: int, default_val: int):
     except ValueError:
         print(f"Invalid numeric input. Using default value {default_val}.")
         return default_val
+    
+def get_optional_int_for_pygame(prompt: str, min_val: int, max_val: int, default_val: int, app: Any = None):
+    """Safely prompts for an integer, handling empty inputs and invalid characters."""
+    user_input = pygame_input_screen(app.screen, prompt).strip()
+    if not user_input:
+        return None
+    try:
+        val = int(user_input)
+        if min_val <= val <= max_val:
+            return val
+        print(f"Invalid input. Should be between {min_val} and {max_val}. Using default value {default_val}.")
+        return default_val
+    except ValueError:
+        print(f"Invalid numeric input. Using default value {default_val}.")
+        return default_val
 
-def setup_player(current_user: str) -> dict:
+def setup_player(current_user: str, app: Any = None) -> dict:
     """Handles optional stat inputs and returns the loaded player data."""
     chakra_prompt = f"(Optional) Enter your chakra level ({MINIMUM_CHAKRA_LEVEL}-{MAXIMUM_CHAKRA_LEVEL}): "
-    chakra_input = get_optional_int(chakra_prompt, MINIMUM_CHAKRA_LEVEL, MAXIMUM_CHAKRA_LEVEL, MINIMUM_CHAKRA_LEVEL)
-    
     reset_prompt = f"(Optional) Enter your chakra resets ({MIN_CHAKRA_RESET}-{MAX_CHAKRA_RESET}): "
-    reset_input = get_optional_int(reset_prompt, MIN_CHAKRA_RESET, MAX_CHAKRA_RESET, MIN_CHAKRA_RESET)
+    chakra_input = get_optional_int_for_pygame(chakra_prompt, MINIMUM_CHAKRA_LEVEL, MAXIMUM_CHAKRA_LEVEL, MINIMUM_CHAKRA_LEVEL, app)
+    reset_input = get_optional_int_for_pygame(reset_prompt, MIN_CHAKRA_RESET, MAX_CHAKRA_RESET, MIN_CHAKRA_RESET, app)
 
     if chakra_input is not None and reset_input is not None:
         save_player_data(current_user, chakra=chakra_input, resets=reset_input, base_chakra_level=chakra_input)
@@ -309,13 +321,13 @@ def check_game_over(player_data: dict):
     """Checks for game-over conditions and exits if necessary."""
     if player_data.get("blindness") == "heavy":
         print("You can no longer see anything... Game Over! Maybe consider get new sharingan eye somewhere else 👉👈")
-        sys.exit()
+        sys.exit(0)
 
     if player_data.get("resets", 0) <= 0 and player_data.get("chakra", 0.0) <= 0:
         print("You have no more resets or chakra left. Game Over!")
-        sys.exit()
+        sys.exit(0)
 
-def process_techniques(current_user: str, player_data: dict, choices_list: list) -> str:
+def process_techniques(current_user: str, player_data: dict, choices_list: list, app: Any = None) -> str:
     """Processes user jutsu/dojutsu selections and returns the final load string."""
     techniques_to_load = []
     user_data = get_user_data(current_user)
@@ -332,19 +344,26 @@ def process_techniques(current_user: str, player_data: dict, choices_list: list)
             print(f"Mangekyou owner is {mangekyou_owner.capitalize()}")  
             print(f"Your current blindness stage: {player_data.get('blindness', 'None')}")   
         else:
-            scenario = input("\nDescribe your emotional scenario to determine your Sharingan stage: ")
+            scenario_prompt = "Describe your emotional scenario to determine your Sharingan stage: "
+            scenario = pygame_input_screen(app.screen, scenario_prompt).strip()
+
             stage = generate(scenario).replace(' ', '_')
             techniques = []
             mangekyou_owner = None
             
             if stage == "mangekyou":
-                mangekyou_owner_input = input("Choose only one sharingan owner(`list of owners | itachi obito sasuke madara shisui indra |`): ").lower()
+                owner_prompt = "Choose only one sharingan owner(`list of owners | itachi obito sasuke madara shisui indra |`): "
+                mangekyou_owner_sub_text = f"Available: {', '.join(MANGEKYOU_USERS.keys())}"
+                mangekyou_owner_input = pygame_input_screen(app.screen, owner_prompt, mangekyou_owner_sub_text).strip().lower()
+
                 if len(mangekyou_owner_input.split(",")) <= 1:
                     mangekyou_owner = mangekyou_owner_input
-                    
-                tech_input = input("Which Mangekyou technique do you want to manifest? (e.g., amaterasu, tsukuyomi): ").lower()
+
+                tech_prompt = "Which Mangekyou technique do you want to manifest? (e.g., amaterasu, tsukuyomi):"
+                mangekyou_techniques_sub_text = f"Available: {', '.join(MANGEKYOU_ABILITIES.keys())}"
+                tech_input = pygame_input_screen(app.screen, tech_prompt, mangekyou_techniques_sub_text).strip().lower()
+
                 techniques = [t.strip() for t in tech_input.split(',') if t.strip()]
-                
             print(f"\nBased on your scenario, you have awakened: {stage.upper()}") 
             save_data_to_txt(current_user, stage, techniques, mangekyou_owner)
             print("(Your Sharingan data has been saved for next time!)")
@@ -361,16 +380,75 @@ def process_techniques(current_user: str, player_data: dict, choices_list: list)
         return ", ".join(techniques_to_load)
     return ", ".join(choices_list)
 
-def print_session_results(app):
+def print_session_results(app: Any):
     """Prints the final statistics of the session."""
     chakra_percent = (app.current_chakra / app.base_chakra_level * 100) if app.base_chakra_level > 0 else 0.0
     
-    print("-" * 40)
+    print("-" * 45)
     print("SESSION RESULTS:")
     print(f"Blindness accumulator: {app.blindness_accumulator}")
     print(f"Final Blindness Stage: {app.blindness_stage}")
-    print(f"Base Chakra: {app.base_chakra_level}")
-    print(f"Final Chakra: {app.current_chakra}")
-    print(f"Remaining Chakra(%): {chakra_percent:.2f}%")
-    print(f"Resets Remaining: {app.chakra_reset}")
-    print("-" * 40)
+    print(f"Base Chakra:           {app.base_chakra_level}")
+    print(f"Final Chakra:          {app.current_chakra}")
+    print(f"Remaining Chakra(%):   {chakra_percent:.2f}%")
+    print(f"Resets Remaining:      {app.chakra_reset}")
+    print("-" * 45)
+
+def pygame_input_screen(screen, prompt_title, sub_text="", base_y_pos=160, title_surf_pos=(50, 100), input_box_pos=(50, 1180, 50)):
+    """Displays a text input field in Pygame and returns the typed string."""
+    font_title = pygame.font.SysFont("Arial", 30, bold=True)
+    font_sub = pygame.font.SysFont("Arial", 22)
+    font_input = pygame.font.SysFont("Arial", 25)
+    
+    input_text = ""
+    clock = pygame.time.Clock()
+    
+    while True:
+        screen.fill((0, 0, 0)) 
+        
+        title_surf = font_title.render(prompt_title, True, (255, 255, 255))
+        screen.blit(title_surf, title_surf_pos)
+        
+        y_pos = base_y_pos
+        if sub_text:
+            words = sub_text.split(" ")
+            line = ""
+            for word in words:
+                test_line = line + word + " "
+                if font_sub.size(test_line)[0] > 1180: 
+                    surf = font_sub.render(line, True, (180, 180, 180))
+                    screen.blit(surf, (50, y_pos))
+                    y_pos += 30
+                    line = word + " "
+                else:
+                    line = test_line
+            if line:
+                surf = font_sub.render(line, True, (180, 180, 180))
+                screen.blit(surf, (50, y_pos))
+                y_pos += 40
+        else:
+            y_pos += 20
+            
+        input_box = pygame.Rect(input_box_pos[0], y_pos, input_box_pos[1], input_box_pos[2])
+        pygame.draw.rect(screen, (255, 255, 255), input_box, 2)
+        
+        cursor = "|" if time.time() % 1 > 0.5 else ""
+        txt_surf = font_input.render(input_text + cursor, True, (100, 255, 100))
+        screen.blit(txt_surf, (input_box.x + 10, input_box.y + 8))
+        
+        pygame.display.flip()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    return input_text.strip()  # Allow empty submissions if just press Enter
+                elif event.key == pygame.K_BACKSPACE:
+                    input_text = input_text[:-1]
+                else:
+                    if event.unicode.isprintable():
+                        input_text += event.unicode
+                        
+        clock.tick(30) # Limit frame rate to prevent 100% CPU usage
