@@ -331,6 +331,7 @@ def process_techniques(current_user: str, player_data: dict, choices_list: list,
     """Processes user jutsu/dojutsu selections and returns the final load string."""
     techniques_to_load = []
     user_data = get_user_data(current_user)
+    print(f"Choice list: {choices_list}")
     
     # Dojutsu Logic (Check for word 'sharingan' or specific stage names)
     if any(c == "sharingan" or c in SHARINGAN_STAGES for c in choices_list):
@@ -370,7 +371,11 @@ def process_techniques(current_user: str, player_data: dict, choices_list: list,
             
         sharingan_str = f"sharingan {stage.lower()} {mangekyou_owner.lower()} {' '.join(techniques).lower()}".strip()
         techniques_to_load.append(sharingan_str)
-
+    elif any(c == "rinnegan" for c in choices_list):
+        techniques_to_load.append("rinnegan")
+    elif any(c == "byakugan" for c in choices_list):
+        techniques_to_load.append("byakugan")
+    
     # Jutsu Logic
     jutsu_choices = [c for c in choices_list if c in JUTSU_CATALOG]
     if jutsu_choices:

@@ -1,6 +1,7 @@
 import os
 import time 
 import math
+import random
 import cv2
 import numpy as np
 from constants import MANGEKYOU_PATH
@@ -8,6 +9,7 @@ from utils import overlay_image, load_gif_frames, get_animated_frame, draw_eye_b
 from .technique_interface import TechniqueInterface
 
 
+# Sharingan
 class AmaterasuEffect(TechniqueInterface):
     def __init__(self, eye_bleeding: cv2.Mat):
         self.amaterasu_idx = 0
@@ -200,4 +202,77 @@ class KotoamatsukamiEffect(TechniqueInterface):
         emerald_hazy_image = cv2.addWeighted(hazy_final, 0.7, emerald_green_image, 0.3, 0)
 
         frame = overlay_image(emerald_hazy_image, self.kotoamatsukami, x, y)
+        return frame, self.blindness_counter  
+
+class OhirumeEffect(TechniqueInterface):
+    def __init__(self):
+        self.centers = []
+        self.prev_active = False
+        self.blindness_counter = 0
+
+    def update(self, center, is_active):
+        if is_active and not self.prev_active:
+            radius = random.randint(5, 100)
+            self.centers.append((center, radius))
+        self.prev_active = is_active
+
+    def reset(self):
+        self.centers.clear()
+    
+    def apply(self, frame):
+        if not self.centers or len(self.centers) > 4: 
+            self.reset()
+            return frame, self.blindness_counter
+
+        for (x, y), r in self.centers:
+            cv2.circle(frame, (x, y), r, (0, 0, 0), -1)
+        return frame, self.blindness_counter
+
+# Rinnegan
+class ChibakuTenseiEffect(TechniqueInterface):
+    def __init__(self, center):
+        self.center = center
+        self.radius = 0
+        self.blindness_counter = 0
+        self.halo_color = (150, 220, 255)
+
+    def update(self, radius):
+        self.radius = radius
+
+    def reset(self):
+        self.radius = 0
+    
+    def apply(self, frame):
+        """Applies the Chibaku Tensei effect to the given frame if the conditions are met."""
+        if not self.center or self.radius <= 0: return frame, self.blindness_counter
+
+        x, y, r = int(self.center[0]), int(self.center[1]), int(self.radius)
+
+        glow_mask = np.zeros_like(frame)
+        halo_radius = int(r * 1.5)
+        cv2.circle(glow_mask, (x, y), halo_radius, self.halo_color, -1)
+
+        k_size = int(r * 2.0)
+        if k_size % 2 == 0: k_size += 1
+        k_size = max(3, k_size)
+
+        glow_mask = cv2.GaussianBlur(glow_mask, (k_size, k_size), 0)
+        frame = cv2.add(frame, glow_mask)
+
+        cv2.circle(frame, (x, y), r, (0, 0, 0), -1)
+        return frame, self.blindness_counter
+
+# Byakugan  
+class ByakuganEffect(TechniqueInterface):
+    def __init__(self):
+        self.blindness_counter = 0
+
+    def apply(self, frame: cv2.Mat):
+        """Applies the Byakugan effect to the given frame if the conditions are met."""
+        inversed = cv2.bitwise_not(frame).astype(np.float32)
+        reduce = inversed.astype(np.float32)
+        reduce[:, :, 2] *= 0.9 # Reduce Red
+        reduce[:, :, 1] *= 0.9 # Reduce Green
+        reduce[:, :, 0] *= 0.9 # Reduce Blue
+        frame = reduce.astype(np.uint8)
         return frame, self.blindness_counter

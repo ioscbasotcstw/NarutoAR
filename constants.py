@@ -82,7 +82,8 @@ MANGEKYOU_ABILITIES = {
     "kamui": {"chakra_cost": 55, "eye": "left_eye"},
     "kotoamatsukami": {"chakra_cost": 65, "eye": "left_eye"}, 
     "kagutsuchi": {"chakra_cost": 60, "eye": "right_eye"},    
-    "susanoo": {"chakra_cost": 100, "eye": "both_eyes"},      
+    "susanoo": {"chakra_cost": 100, "eye": "both_eyes"},    
+    "ohirume": {"chakra_cost": 110, "eye": "both_eyes"},  
 }
 
 MANGEKYOU_USERS = {
@@ -92,16 +93,37 @@ MANGEKYOU_USERS = {
     "shisui": ["kotoamatsukami", "susanoo"],
     "madara": ["susanoo"],
     "indra" : ["amaterasu", "susanoo"],
+    "sarada": ["ohirume"],
 }
 
-# List
+RINNEGAN = {
+    "rinnegan_left": "src/assets/three_great_dojutsu/rinnegan/rinnegan_left.png",
+    "rinnegan_right": "src/assets/three_great_dojutsu/rinnegan/rinnegan_right.png",
+    "chakra_cost": 100,
+}
+
+SIX_PATHS_TECHNIQUE = {
+    "deva_path": {
+        "chibaku_tensei": {"chakra_cost": 200},
+    },
+}
+
+BYAKUGAN = {
+    "byakugan": "src/assets/three_great_dojutsu/byakugan/byakugan.png",
+    "chakra_cost": 50,
+}
+
+# Lists
 STYLES = ["obito_fullfacemask", "kakashi_mask", "kakashi_hair", "hidden_leaf_headband"]
 BACKGROUNDS = ["src/assets/backgrounds/akatsuki.jpeg", "src/assets/backgrounds/infinite_tsukuyomi.png", "src/assets/backgrounds/konoha.jpg", "src/assets/backgrounds/naruto_forest.jpg"]
+RIGHT_EYE_LANDMARKS = [33, 7, 163, 144, 145, 153, 154, 155, 133, 246, 161, 160, 159, 158, 157, 173, 468, 469, 470, 471, 472, 46, 53, 52, 65, 55, 70, 63, 105, 66, 107]
+LEFT_EYE_LANDMARKS = [263, 249, 390, 373, 374, 380, 381, 382, 362, 466, 388, 387, 386, 385, 384, 398, 473, 474, 475, 476, 477, 276, 283, 282, 295, 285, 300, 293, 334, 296, 336]
 
 # Strings
 YOLO_MODEL_PATH = "src/models/naruto_signs_detection.onnx"
 MANGEKYOU_PATH  = "src/assets/three_great_dojutsu/sharingan/mangekyou/"
 SHARINGAN_PATH  = "src/assets/three_great_dojutsu/sharingan/"
+RINNEGAN_PATH   = "src/assets/three_great_dojutsu/rinnegan/"
 APP_NAME        = "Naruto AR"
 SAVE_FILE       = "app_cache.json"
 USER_INFO_FILE  = "user_info.naruto"

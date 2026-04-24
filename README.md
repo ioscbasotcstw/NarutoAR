@@ -16,6 +16,7 @@ Experience the thrill of weaving signs to cast *Chidori*, equipping iconic ninja
 * 🎮 **Interactive Pygame UI**: Say goodbye to terminal prompts! Control everything through an intuitive on-screen heads-up display (HUD) featuring clickable toggles, real-time chakra bars, and a hand-sign history tracker.
 * 🎭 **Real-Time Style Picker**: Customize your look on the fly! Type your desired styles into the UI text box to equip items like `hidden_leaf_headband`, `kakashi_mask`, `kakashi_hair`, or `obito_fullfacemask` directly onto your face.
 * 🏞️ **Dynamic Random Backgrounds**: Seamlessly replace your room with iconic Naruto locations (like the Hokage Monument) using background segmentation. Backgrounds are picked up randomly to keep the environment fresh.
+* 👁 **The Three Great Dōjutsu**: The last two of the three great dōjutsu—the *Rinnegan* and the *Byakugan*—have been added. The *Rinnegan* now includes the “Chibaku Tensei” technique, one of the *Six Paths Techniques*, while the *Byakugan* now has the ability to see chakra flow.
 
 ---
 
@@ -33,7 +34,9 @@ Experience the thrill of weaving signs to cast *Chidori*, equipping iconic ninja
   * 🌑 **Tsukuyomi**: Inverts colors, tints the world red, and distorts time.
   * 🌀 **Kamui**: Click anywhere on the screen to create a spatial distortion/suction vortex.
   * 🦴 **Susanoo**: Overlays a scaled Susanoo ribcage/avatar based on your shoulder and head proportions.
-  * 🧠 **Kotoamatsukami**: An emerald-green tint washes over the screen, featuring images of falling raven feathers with blurred, indistinct edges.
+  * 🧠 **Kotoamatsukami**: An emerald-green tint washes over the screen, featuring images of falling raven 
+  feathers with blurred, indistinct edges.
+  * ⚫️ **Ohirume**: Click anywhere on the screen to create four black spheres of any radius.
 
 ### 📊 RPG Mechanics
 * **Chakra System**: A visual health-bar style Chakra meter tracks your energy. Active Jutsus and Dojutsu drain your Chakra. If you run out, techniques deactivate until you reset.
@@ -62,32 +65,45 @@ Since this project relies on custom assets, ensure you maintain the appropriate 
    git clone https://github.com/ioscbasotcstw/NarutoAR.git
    cd NarutoAR
    ```
-2. **Install the required Python packages**:
+2. **You know you need to create a virtual environment and activate it, right?**:
+   For MacOS/Linux
+   ```bash
+   python3.10 -m venv .venv
+   source .venv/bin/activate
+   ```
+   For Windows
+   ```bash
+   python -m venv .venv OR py -3.10 -m venv .venv
+   .venv\Scripts\activate
+   ```
+3. **Install the required Python packages**:
    ```bash
    pip install -r requirements.txt
    ```
-3. **Add API Key**: Create a `.env` file containing your Google GenAI API key, example `GEMINI_API_KEY="your-api-key"`
+4. **Add API Key**: Create a `.env` file containing your Google GenAI API key, example `GEMINI_API_KEY="your-api-key"`
 
-4. **Run the Application**:
+5. **Run the Application**:
    ```bash
    python3 -m src.naruto_pygame.naruto_ar_pygame
    ```
-
-4. **In-Game Flow**:
+6. **In-Game Flow**:
    * Once the Pygame window opens, your webcam feed will initialize alongside the HUD.
    * **Style Picker**: Click the text box (`Enter you desire style`) and type in styles (e.g., `kakashi_mask`, `kakashi_hair`). Press Enter to apply them.
-   * **Toggles**: Use the on-screen switches to instantly activate or deactivate **Susanoo**, **Backgrounds**, **Mangekyou**, **Sharingan**, and **Jutsu**.
+   * **Six Paths Technique**: Click on the text field (“Enter the desired technique”) and type the name of the available technique. Press Enter to apply.
+   * **Toggles**: Use the on-screen switches to instantly activate or deactivate **Susanoo**, **Backgrounds**, **Mangekyou**, **Sharingan**, **Byakugan** and **Jutsu**.
    * Perform hand signs in front of the camera to trigger your configured jutsu sequences.
 
 ---
 
 ## 🎮 Controls & Configuration
 
-* **Pygame UI Toggles**: Click the green/grey switches on the right panel to manage active states (Sharingan, Mangekyou, Background, Susanoo, Jutsu).
+* **Pygame UI Toggles**: Click the green/grey switches on the right panel to manage active states (Sharingan, Mangekyou, Background, Susanoo, Jutsu, Byakugan).
 * **Style Input Box**: Type your desired cosmetics directly into the UI.
-* **Left Mouse Click**: Sets the center point for the **Kamui** vortex and toggles it ON/OFF.
+* **Six Paths Technique Input Box**: Type your desired technique.
+* **Left Mouse Click**: Sets the center point for the **Kamui** vortex and toggles it ON/OFF. This also applies to **Chibaku Tensei**.
 * **`r` Key**: Resets your hand sign history and deactivates the current Jutsu.
 * **`q` Key / Esc**: Quits the application and saves your current Chakra/Blindness progress.
+* **`TAB` Key**: Press the Tab key *once* to highlight the style selection field, and then press the Tab key *twice* to highlight the “Six Paths Technique” field.
 * **`user_info.naruto` File**: Used for deep configuration of your Dojutsu profile. 
   * *Format example:* `Kakashi. mangekyou. indra. amaterasu, tsukuyomi, susanoo, kamui, kotoamatsukami.`
   * *Structure:* `[Username]. [Sharingan Stage (Tomoe 1-3 or Mangekyou)]. [Mangekyou Owner].[Techniques].` 
@@ -99,7 +115,7 @@ Since this project relies on custom assets, ensure you maintain the appropriate 
 
 * **`NarutoAR` (Main Pygame Loop)**: Manages the Pygame display surface, UI event handling, webcam frame acquisition, and layered rendering of AR elements.
 * **`JutsuFactory`**: Orchestrates standard Jutsu rendering. Switches between OpenCV base effects, background segmentations, and hand-bound GIFs.
-* **`DojutsuFactory`**: Processes MediaPipe Face/Pose landmarks to precisely map Sharingan eyes and render complex Mangekyou abilities based on eye-open states.
+* **`DojutsuFactory`**: Processes MediaPipe Face/Pose landmarks to precisely map Sharingan, Rinnegan and Byakugan eyes and render complex Mangekyou abilities based on eye-open states.
 * **`TechniqueInterface`**: The base class guaranteeing an `apply()` method for modular integration of new techniques like `KamuiEffect` or `SusanooEffect`.
 
 ---

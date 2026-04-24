@@ -12,7 +12,6 @@
 
 import math
 import os
-import sys
 import time
 import pygame
 from pygame.locals import *
@@ -36,6 +35,8 @@ from constants import (
     MEDIUM_BLINDNESS,
     HEAVY_BLINDNESS,
     MANGEKYOU_ABILITIES,
+    RINNEGAN,
+    BYAKUGAN,
 )
 from utils import (
     apply_blindness_effect,
@@ -57,10 +58,9 @@ from typing import List
 
 class NarutoAR:
     def __init__(self):
-        # Initialize Models
         print("Loading models...")
+        # Initialize Models
         self.yolo = YOLO(YOLO_MODEL_PATH, task="detect", verbose=False)
-        # Mediapipe Need use Holistic
         self.mp_holistic = mp.solutions.holistic
         self.holistic_results = self.mp_holistic.Holistic(
             static_image_mode=False,
@@ -70,6 +70,7 @@ class NarutoAR:
             min_tracking_confidence=0.5
         )
         self.segmenter = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=1)
+        print("Complete loading models...")
         # State Variables 
         self.history: List[str]  = []
         self.target_sequence     = []
@@ -94,6 +95,9 @@ class NarutoAR:
         self.dojutsu_img           = None
         self.mangekyou_owner       = None
         self.mangekyou_technique   = None
+        self.rinnegan_left         = None
+        self.rinnegan_right        = None
+        self.byakugan              = None
         self.sharingan_stage       = None
         self.blindness_stage       = None 
         # Integers/floats
@@ -115,9 +119,9 @@ class NarutoAR:
         
         # Other
         self.prison_radius = self.width // 3 if self.width > self.height else self.height // 3
-        self.center_point = [self.width // 2, self.height // 2]
-        self.kamui_active = False
-        self.bg_resized   = False
+        self.center_point  = [self.width // 2, self.height // 2]
+        self.is_clicked    = False
+        self.bg_resized    = False
 
         pygame.init()
         pygame.display.set_caption(APP_NAME)
@@ -134,13 +138,22 @@ class NarutoAR:
         """Parses user input and loads corresponding images and sequences."""
         inputs = [x.strip() for x in user_input.split(',')]
         # ['sharingan mangekyou itachi amaterasu tsukuyomi susanoo kamui']
+        # ['sharingan mangekyou itachi amaterasu tsukuyomi susanoo kamui', 'chidori']
         print(f"User input parsed as: {inputs}")
         # Reset
         self.target_sequence = []
         self.jutsu_path = None
         self.dojutsu_img = None
+        self.rinnegan_left = None
+        self.rinnegan_right = None
+        self.byakugan = None
         found_something = False
 
+        # sharingan mangekyou sarada amaterasu tsukuyomi susanoo kotoamatsukami kamui ohirume
+        # chidori
+
+        # rinnegan | byakugan
+        # chidori
         for item in inputs:
             # Check Jutsu
             if item in JUTSU_CATALOG:
@@ -154,7 +167,7 @@ class NarutoAR:
                 found_something = True
                 self.is_jutsu_performed = True
             # Check Dojutsu
-            # (sharingan | byakugan | rinnengan) (tomoe_1 | tomoe_2 | tomoe_3 | mangekyou) (amaterasu | tsukuyomi |susanoo)
+            # sharingan (tomoe_1 | tomoe_2 | tomoe_3 | mangekyou) (amaterasu | tsukuyomi |susanoo)
             elif item.startswith("sharingan"):
                 # ['sharingan', 'mangekyou', 'itachi', 'amaterasu', 'tsukuyomi', 'susanoo', 'kamui']
                 parts = item.split(' ')
@@ -175,12 +188,8 @@ class NarutoAR:
                     # (tomoe_1 | tomoe_2 | tomoe_3).png | (itachi | obito | sasuke | madara | shisui | indra).png
                     img_path = stage_data["image"] if stage != "mangekyou" else image_path
                     self.sharingan_stage = stage
-                    self.dojutsu_img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
 
-                    if self.dojutsu_img.shape[2] == 4: # If it has transparency (Alpha channel)
-                        self.dojutsu_img = cv2.cvtColor(self.dojutsu_img, cv2.COLOR_BGRA2RGBA)
-                    else:
-                        self.dojutsu_img = cv2.cvtColor(self.dojutsu_img, cv2.COLOR_BGR2RGB)
+                    self.dojutsu_img  = self._load_image(img_path)
                     
                     if stage == "mangekyou":
                         self.mangekyou_owner = owner
@@ -188,6 +197,21 @@ class NarutoAR:
                         self.mangekyou_technique = parts[3:] 
                         
                 found_something = True
+            # rinnengan
+            elif item == "rinnegan":
+                rinnegan_left_eye_path  = RINNEGAN.get("rinnegan_left", None)
+                rinnegan_right_eye_path = RINNEGAN.get("rinnegan_right", None)
+
+                self.rinnegan_left  = self._load_image(rinnegan_left_eye_path)
+                self.rinnegan_right = self._load_image(rinnegan_right_eye_path)
+
+                found_something = True
+            # byakugan
+            elif item == "byakugan":
+                byakugan_path = BYAKUGAN.get("byakugan", None)
+                self.byakugan = self._load_image(byakugan_path)
+                found_something = True
+
         # Fallback
         if not found_something:
             self.jutsu_name = "rasengan"
@@ -249,9 +273,9 @@ class NarutoAR:
                             self.history.append(detected_name)
                             self.is_broken_sequence = False
                             print(f"First sign is correct after error! History: {self.history}")
-                    self.check_activation()
+                    self._check_activation()
 
-    def check_activation(self) -> None:
+    def _check_activation(self) -> None:
         """Checks if the recent history matches the target sequence."""
         if not self.target_sequence:
             return
@@ -261,420 +285,446 @@ class NarutoAR:
             if self.history[-seq_len:] == self.target_sequence:
                 self.jutsu_active = True
                 self.history = [] # Clear history
-                
+
     def run(self) -> None:
+        """Main entrypoint for the AR session."""
         try:
-            print("Controls:")
-            print(" - Click on the video: Activate/Move Kamui center")
-            print(" - Click again: Deactivate")
-            print("Starting AR... Press 'q' to quit, 'r' to reset.")
+            self._print_controls()
+            self._init_assets_and_factories()
+            self._init_ui_elements()
+            
+            while True: 
+                if not self._main_loop_step(): break
+                    
+        except Exception as e: print(f"Error in main: {e}")
+        finally: self._cleanup()
 
-            precomputed_data = create_water_maps(self.prison_radius)
-            bg_image = cv2.imread(self.jutsu_path)
-            tomoe_3 = None
-            eye_bleeding = None
-            susanoo = None
-            kotoamatsukami = None
+    def _print_controls(self):
+        print("Controls:")
+        print(" - Click on the video: Activate/Move Kamui center")
+        print(" - Click again: Deactivate")
+        print("Starting AR... Press 'q' to quit, 'r' to reset.")
+        print("Press TAB to choose style and press TAB again to choose Six Paths Technique.")
 
-            if self.sharingan_stage is not None:
-                tomoe_3_path = os.path.join(SHARINGAN_PATH, "tomoe_3.png")
-                if not os.path.exists(tomoe_3_path):
-                    raise FileNotFoundError(f"Image file '{tomoe_3_path}' not found in '{SHARINGAN_PATH}' directory.")
+    def _load_image(self, path: str):
+        """Helper to safely load and convert images with transparency support."""
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Image file '{path}' not found.")
+        
+        img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        if len(img.shape) == 3 and img.shape[2] == 4:
+            return cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    def _init_assets_and_factories(self):
+        precomputed_data = create_water_maps(self.prison_radius)
+        bg_image = cv2.imread(self.jutsu_path)
+        
+        tomoe_3 = eye_bleeding = susanoo = kotoamatsukami = None
+
+        if self.sharingan_stage is not None:
+            tomoe_3 = self._load_image(os.path.join(SHARINGAN_PATH, "tomoe_3.png"))
+            eye_bleeding = self._load_image(os.path.join(MANGEKYOU_PATH, "blood_bleed_from_eye.png"))
+            susanoo = self._load_image(os.path.join(MANGEKYOU_PATH, "techniques/susanoo.png"))
+            kotoamatsukami = self._load_image(os.path.join(MANGEKYOU_PATH, "feather.png"))
+
+        self.jutsu_factory = JutsuFactory(
+            cached_jutsu_effect=self.cached_jutsu_effect,
+            jutsu_path=self.jutsu_path,
+            jutsu_name=self.jutsu_name,
+            bg_image=bg_image,
+            bg_resized=self.bg_resized,
+            radius=self.prison_radius,
+            precomputed_data=precomputed_data,
+            is_sequantial=self.is_sequantial,
+            has_image=self.has_image,
+            is_hand_jutsu=self.is_hand_jutsu,
+            current_chakra=self.current_chakra,
+            scale_factor_for_image_jutsu=3.5,
+        )
+
+        self.dojutsu_factory = DojutsuFactory(
+            eye_opened_coef=EYE_OPENED_COEFFICIENT,
+            dojutsu_img=self.dojutsu_img,
+            eye_bleeding=eye_bleeding,
+            susanoo=susanoo,
+            kotoamatsukami=kotoamatsukami,
+            tomoe_3=tomoe_3,
+            rinnegan_left=self.rinnegan_left,
+            rinnegan_right=self.rinnegan_right,
+            byakugan=self.byakugan,
+            sharingan_stage=self.sharingan_stage,
+            mangekyou_technique=self.mangekyou_technique,
+            mangekyou_owner=self.mangekyou_owner,
+            current_chakra=self.current_chakra,
+        )
+
+        self.bg = Backgrounds(bg_resized=self.bg_resized)
+        self.style_factory = StyleFactory()
+
+    def _init_ui_elements(self):
+        """Bundles dictionaries tracking UI configuration, animation states, and text boxes."""
+        base_x = int(self.width)
+        self.toggles = {
+            'bg': Toggle(base_x + 250, 300, 60, 30, starting_state=True),
+            'ohirume': Toggle(base_x + 250, 350, 60, 30, starting_state=True),
+            'byakugan': Toggle(base_x + 250, 350, 60, 30, starting_state=True),
+            'susanoo': Toggle(base_x + 20, 300, 60, 30, starting_state=True),
+            'mangekyou': Toggle(base_x + 20, 350, 60, 30, starting_state=True),
+            'sharingan': Toggle(base_x + 20, 400, 60, 30, starting_state=True),
+        }
+        
+        if self.sharingan_stage is not None:
+            self.toggles['jutsu'] = Toggle(base_x + 20, 450, 60, 30, starting_state=True)
+        else:
+            self.toggles['jutsu'] = Toggle(base_x + 20, 300, 60, 30, starting_state=True)
+
+        self.ui_state = {
+            'input_text': "",
+            'picked_styles':[],
+            'picked_style': None,
+            'active_box': None,
+            'spt_input_text': "",
+            'six_paths_technique': None,
+        }
+
+        self.anim_vars = {
+            'i': 0,
+            'amplitude': 50,
+            'frequency': 0.05,
+            'speed': 2,
+            'center_x': self.width // 2,
+            'x': 0.0,
+            'y': self.height // 4
+        }
+
+        self.cached_target_seq = {}
+        self.new_image_size = (100, 100)
+
+        self.fonts = {
+            'title': pygame.font.SysFont("Arial", 14, bold=True),
+            'sub': pygame.font.SysFont("Arial", 14),
+            'input': pygame.font.SysFont("Arial", 14),
+            'toggle': pygame.font.SysFont("Arial", 16, bold=True),
+            'chakra': pygame.font.SysFont("Arial", 28, bold=True)
+        }
+
+    def _main_loop_step(self) -> bool:
+        success, frame = self.cap.read()
+        if not success: 
+            return False
+
+        self.screen.fill([0, 0, 0])
+
+        current_time = time.time()
+        dt = current_time - getattr(self, 'last_time', current_time)
+        self.last_time = current_time
+
+        frame = cv2.flip(frame, 1)
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        holistic_results = self.holistic_results.process(frame)
+        
+        # Only process segmenter if Jutsu is active or background is ON
+        segmenter_results = None
+        if self.is_jutsu_performed or self.toggles['bg'].state:
+            segmenter_results = self.segmenter.process(frame)
+
+        self.update_signs(frame)
+        self._update_blindness(dt)
+
+        if self.current_chakra >= 10:
+            frame = apply_blindness_effect(frame=frame, stage=self.blindness_stage)
+                   
+            if self.ui_state['picked_style']:
+                frame = self.style_factory.create_style(
+                    frame=frame, 
+                    style_name=self.ui_state['picked_styles'], 
+                    holistic_results=holistic_results
+                )
+
+            if self.toggles['bg'].state:
+                frame = self.bg.apply(frame=frame, segmenter_results=segmenter_results)
+
+            if self.toggles['jutsu'].state:
+                self.jutsu_factory.current_chakra = self.current_chakra
+                self.jutsu_factory.update(
+                    frame=frame, 
+                    dt=dt, 
+                    blindness_stage=self.blindness_stage, 
+                    jutsu_active=self.jutsu_active, 
+                    disable_bg=not self.toggles['bg'].state,
+                    holistic_results=holistic_results, 
+                    segmenter_results=segmenter_results, 
+                    mp_holistic=self.mp_holistic,
+                )
+                frame, self.current_chakra = self.jutsu_factory.draw_jutsu_effect()
+            
+            if self.toggles['sharingan'].state:
+                self.dojutsu_factory.current_chakra = self.current_chakra
+                self.dojutsu_factory.update(
+                    frame=frame, 
+                    dt=dt, 
+                    x=self.anim_vars['x'], 
+                    y=self.anim_vars['y'], 
+                    blindness_stage=self.blindness_stage, 
+                    center=self.center_point, 
+                    is_clicked=self.is_clicked, 
+                    disable_ohirume=not self.toggles['ohirume'].state,
+                    disable_susanoo=not self.toggles['susanoo'].state,
+                    disable_mangekyou=not self.toggles['mangekyou'].state,
+                    disable_byakugan=not self.toggles['byakugan'].state,
+                    spt=self.ui_state['six_paths_technique'],
+                    holistic_results=holistic_results, 
+                    mp_holistic=self.mp_holistic,
+                )
+
+                frame, self.blindness_counter, self.current_chakra = self.dojutsu_factory.draw_dojutsu_effect()
+
+        # Convert array dimensions for Pygame
+        frame = np.swapaxes(frame, 0, 1)
+        frame = pygame.surfarray.make_surface(frame) 
+
+        # Animation Math Updates(For Kotoamatsukami)
+        self.anim_vars['x'] = self.anim_vars['center_x'] + (self.anim_vars['amplitude'] * math.sin(self.anim_vars['frequency'] * self.anim_vars['i']))
+        self.anim_vars['y'] += self.anim_vars['speed']
+        if self.anim_vars['y'] >= self.height - 200:
+            self.anim_vars['y'] = 20
+        self.anim_vars['i'] += 1
+        
+        if not self._check_chakra_depletion():
+            return False
+
+        self.screen.blit(frame, (0, 0))
+        self._render_ui()
+        pygame.display.update()
+
+        return self._handle_events()
+
+    def _update_blindness(self, dt):
+        self.blindness_accumulator += self.blindness_counter * dt
+        if LIGHT_BLINDNESS <= self.blindness_accumulator < MEDIUM_BLINDNESS:
+            self.blindness_stage = "light"
+        elif MEDIUM_BLINDNESS <= self.blindness_accumulator < HEAVY_BLINDNESS:
+            self.blindness_stage = "medium"
+        elif self.blindness_accumulator >= HEAVY_BLINDNESS:
+            self.blindness_stage = "heavy"
+        else:                    
+            self.blindness_stage = None
+
+    def _check_chakra_depletion(self) -> bool:
+        if self.current_chakra <= 0:
+            self.jutsu_active = False
+            self.is_jutsu_performed = False
+            self.cached_jutsu_effect = None
+            self.history =[]
+            
+            if getattr(self, 'chakra_reset', 0) <= 0:
+                print("Game Over! No resets left.")
+                self.current_chakra = 0
+                self.chakra_reset = 0
+                return False
                 
-                tomoe_3 = cv2.imread(tomoe_3_path, cv2.IMREAD_UNCHANGED)
-                if tomoe_3.shape[2] == 4: # If it has transparency (Alpha channel)
-                    tomoe_3 = cv2.cvtColor(tomoe_3, cv2.COLOR_BGRA2RGBA)
-                else:                    
-                    tomoe_3 = cv2.cvtColor(tomoe_3, cv2.COLOR_BGR2RGB)
+            self.chakra_reset -= 1
+            self.current_chakra = self.base_chakra_level
+            print(f"Chakra depleted! Resetting... Remaining resets: {self.chakra_reset}")
+        return True
 
-                eye_bleeding_path = os.path.join(MANGEKYOU_PATH, "blood_bleed_from_eye.png")
-                if not os.path.exists(eye_bleeding_path):
-                    raise FileNotFoundError(f"Image file '{eye_bleeding_path}' not found in '{MANGEKYOU_PATH}' directory.")
-                
-                eye_bleeding = cv2.imread(eye_bleeding_path, cv2.IMREAD_UNCHANGED)
-                if eye_bleeding.shape[2] == 4: # If it has transparency (Alpha channel)
-                    eye_bleeding = cv2.cvtColor(eye_bleeding, cv2.COLOR_BGRA2RGBA)
+    def _render_ui(self):
+        ui_x = int(self.width) + 20 
+        ui_y = 50
+        bar_width, bar_height = 300, 25
+
+        # Render Chakra Bar
+        chakra_percent = (self.current_chakra / self.base_chakra_level) if getattr(self, 'base_chakra_level', 0) > 0 else 0
+        fill_width = max(0, min(int(chakra_percent * bar_width), bar_width))
+
+        text_str = f"Chakra: {(chakra_percent * 100):.2f}% | Reset: {self.chakra_reset}"
+        self.screen.blit(self.fonts['chakra'].render(text_str, True, (255, 255, 255)), (ui_x, ui_y - 35))
+
+        pygame.draw.rect(self.screen, (255, 255, 255), (ui_x, ui_y, bar_width, bar_height))
+        if fill_width > 0:
+            pygame.draw.rect(self.screen, (255, 0, 0), (ui_x, ui_y, fill_width, bar_height))
+
+        self._render_target_sequence()
+        self._render_styles_ui(ui_x)
+        self._render_toggles(ui_x)
+
+    def _render_target_sequence(self):
+        if self.cached_target_seq.get("sequence_name") != self.target_sequence:
+            self.cached_target_seq["sequence_name"] = list(self.target_sequence)
+            self.cached_target_seq["target"] =[]
+
+            for target in self.target_sequence:
+                img_path = CORRESPONDING_VISUAL_TO_SIGNS.get(target, None)
+                if img_path and os.path.exists(img_path):
+                    image = pygame.image.load(img_path)
+                    image = pygame.transform.scale(image, self.new_image_size)
+                    self.cached_target_seq["target"].append(image)
                 else:
-                    eye_bleeding = cv2.cvtColor(eye_bleeding, cv2.COLOR_BGR2RGB)
+                    surf = pygame.Surface(self.new_image_size)
+                    surf.fill((100, 100, 100))
+                    self.cached_target_seq["target"].append(surf)
 
-                susanoo_path = os.path.join(MANGEKYOU_PATH, "techniques/susanoo.png")
-                if not os.path.exists(susanoo_path):
-                    raise FileNotFoundError(f"Image file '{susanoo_path}' not found in '{MANGEKYOU_PATH}/techniques/' directory.")
-                susanoo = cv2.imread(susanoo_path, cv2.IMREAD_UNCHANGED)
+        matched_count = len(self.history)
+        current_x_padding = 5
+        image_y = self.height + 100
+        
+        for i, target_img in enumerate(self.cached_target_seq.get("target",[])):
+            image_to_tint = target_img.copy()
 
-                if susanoo.shape[2] == 4: # If it has transparency (Alpha channel)
-                    susanoo = cv2.cvtColor(susanoo, cv2.COLOR_BGRA2RGBA)
-                else:
-                    susanoo = cv2.cvtColor(susanoo, cv2.COLOR_BGR2RGB)
+            if i < matched_count:
+                image_to_tint.fill((0, 80, 0), special_flags=pygame.BLEND_RGB_ADD)
+            elif i == matched_count and len(self.history) > 0:
+                image_to_tint.fill((120, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
-                kotoamatsukami_path = os.path.join(MANGEKYOU_PATH, "feather.png")
-                if not os.path.exists(kotoamatsukami_path):
-                    raise FileNotFoundError(f"Image file '{kotoamatsukami_path}' not found in '{MANGEKYOU_PATH}' directory.")
-                kotoamatsukami = cv2.imread(kotoamatsukami_path, cv2.IMREAD_UNCHANGED)
-
-                if kotoamatsukami.shape[2] == 4: # If it has transparency (Alpha channel)
-                    kotoamatsukami = cv2.cvtColor(kotoamatsukami, cv2.COLOR_BGRA2RGBA)
-                else:
-                    kotoamatsukami = cv2.cvtColor(kotoamatsukami, cv2.COLOR_BGR2RGB)
-
-            jutsu_factory = JutsuFactory(
-                cached_jutsu_effect=self.cached_jutsu_effect,
-                jutsu_path=self.jutsu_path,
-                jutsu_name=self.jutsu_name,
-                bg_image=bg_image,
-                bg_resized=self.bg_resized,
-                radius=self.prison_radius,
-                precomputed_data=precomputed_data,
-                is_sequantial=self.is_sequantial,
-                has_image=self.has_image,
-                is_hand_jutsu=self.is_hand_jutsu,
-                current_chakra=self.current_chakra,
-                scale_factor_for_image_jutsu=3.5,
-            )
-
-            dojutsu_factory = DojutsuFactory(
-                eye_opened_coef=EYE_OPENED_COEFFICIENT,
-                dojutsu_img=self.dojutsu_img,
-                eye_bleeding=eye_bleeding,
-                susanoo=susanoo,
-                kotoamatsukami=kotoamatsukami,
-                tomoe_3=tomoe_3,
-                sharingan_stage=self.sharingan_stage,
-                mangekyou_technique=self.mangekyou_technique,
-                mangekyou_owner=self.mangekyou_owner,
-                current_chakra=self.current_chakra,
-            )
-
-            bg = Backgrounds(
-                bg_resized=self.bg_resized,
-            )
-
-            i = 0
-            amplitude=50
-            frequency=0.05
-            speed = 2
-
-            center_x, y = self.width // 2, self.height // 4
-            x = 0.0
-
-            cached_target_seq = {}
-            new_image_size = (100, 100)
-
-            style_factory = StyleFactory()
-            pick_character_style = f"Enter you desire style."
-            style_sub_text = f"Available styles: {', '.join(STYLES)}"
-            picked_style = None
-            picked_styles = []
-            input_text = ""
-
-            font_title = pygame.font.SysFont("Arial", 14, bold=True)
-            font_sub = pygame.font.SysFont("Arial", 14)
-            font_input = pygame.font.SysFont("Arial", 14)
-            font_toggle = pygame.font.SysFont("Arial", 16, bold=True)
-
-            disable_susanoo = False
-            susanoo_toggle = Toggle(int(self.width) + 20, 300, 60, 30, starting_state=True)
-
-            disable_mangekyou = False
-            mangekyou_toggle = Toggle(int(self.width) + 20, 350, 60, 30, starting_state=True)
-
-            disable_sharingan = False
-            sharingan_toggle = Toggle(int(self.width) + 20, 400, 60, 30, starting_state=True)
-
-            disable_jutsu = False
-            if self.sharingan_stage is not  None:
-                jutsu_toggle = Toggle(int(self.width) + 20, 450, 60, 30, starting_state=True)
+            if self.is_broken_sequence:
+                self.screen.blit(target_img, (current_x_padding, image_y))
             else:
-                jutsu_toggle = Toggle(int(self.width) + 20, 300, 60, 30, starting_state=True)
+                self.screen.blit(image_to_tint, (current_x_padding, image_y))
 
-            disable_bg = False
-            bg_toggle = Toggle(int(self.width) + 250, 300, 60, 30, starting_state=True)
+            current_x_padding += self.new_image_size[0] + 10
 
-            while True:
-                success, frame = self.cap.read()
-                if not success: sys.exit(0)
+    def _render_styles_ui(self, ui_x):
+        self.screen.blit(self.fonts['title'].render("Enter your desire style.", True, (255, 255, 255)), (ui_x, 150))
+        self.screen.blit(self.fonts['sub'].render(f"Available styles: {', '.join(STYLES)}", True, (180, 180, 180)), (ui_x, 180))
 
-                # clear screen every frame
-                self.screen.fill([0,0,0])
+        input_box_rect = pygame.Rect(ui_x, 210, 300, 40)
+        pygame.draw.rect(self.screen, (255, 255, 255), input_box_rect, 2)
+        
+        cursor = "|" if time.time() % 1 > 0.5 else ""
+        txt_surf = self.fonts['input'].render(self.ui_state['input_text'] + cursor, True, (100, 255, 100))
+        self.screen.blit(txt_surf, (input_box_rect.x + 10, input_box_rect.y + 5))
+        
+        if self.ui_state['picked_style']:
+            ps = self.ui_state['picked_styles']
+            active_str = f"Active: {ps[0] if len(ps) == 1 else ', '.join(ps)}"
+            self.screen.blit(self.fonts['sub'].render(active_str, True, (255, 200, 0)), (ui_x, 260))
 
-                current_time = time.time()
-                dt = current_time - self.last_time 
-                self.last_time = current_time
+        if self.rinnegan_left is not None:
+            self.screen.blit(self.fonts['title'].render("Enter desire technique: ", True, (255, 255, 255)), (ui_x, 355))
+            self.screen.blit(self.fonts['sub'].render("Available six paths technique: chibaku tensei", True, (180, 180, 180)), (ui_x, 385))
 
-                frame = cv2.flip(frame, 1)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            spt_input_box_rect = pygame.Rect(ui_x, 405, 300, 40)
+            pygame.draw.rect(self.screen, (255, 255, 255), spt_input_box_rect, 2)
+            
+            spt_txt_surf = self.fonts['input'].render(self.ui_state['spt_input_text'] + cursor, True, (100, 255, 100))
+            self.screen.blit(spt_txt_surf, (spt_input_box_rect.x + 10, spt_input_box_rect.y + 5))
 
-                holistic_results  = self.holistic_results.process(frame)
-                segmenter_results = self.segmenter.process(frame) if self.is_jutsu_performed or not disable_bg else None
+    def _render_toggles(self, ui_x):
+        self.toggles['bg'].draw(self.screen)
+        self.screen.blit(self.fonts['toggle'].render(f"Background: {'ON' if self.toggles['bg'].state else 'OFF'}", True, (255, 255, 255)), (ui_x + 300, 305))
 
-                # Update Logic
-                self.update_signs(frame)
+        if self.sharingan_stage is not None:
+            self.toggles['susanoo'].draw(self.screen)
+            self.toggles['mangekyou'].draw(self.screen)
+            self.toggles['sharingan'].draw(self.screen)
+            self.toggles['ohirume'].draw(self.screen)
+            
+            self.screen.blit(self.fonts['toggle'].render(f"Susanoo: {'ON' if self.toggles['susanoo'].state else 'OFF'}", True, (255, 255, 255)), (ui_x + 75, 305))
+            self.screen.blit(self.fonts['toggle'].render(f"Mangekyou: {'ON' if self.toggles['mangekyou'].state else 'OFF'}", True, (255, 255, 255)), (ui_x + 75, 355))
+            self.screen.blit(self.fonts['toggle'].render(f"Sharingan: {'ON' if self.toggles['sharingan'].state else 'OFF'}", True, (255, 255, 255)), (ui_x + 75, 405))
+            self.screen.blit(self.fonts['toggle'].render(f"Ohirume: {'ON' if self.toggles['ohirume'].state else 'OFF'}", True, (255, 255, 255)), (ui_x + 300, 355))
 
-                self.blindness_accumulator += self.blindness_counter * dt
+        if getattr(self, 'jutsu_active', False):
+            self.toggles['jutsu'].draw(self.screen)
+            jut_label = self.fonts['toggle'].render(f"Jutsu: {'ON' if self.toggles['jutsu'].state else 'OFF'}", True, (255, 255, 255))
+            y_offset = 455 if self.sharingan_stage is not None else 305
+            self.screen.blit(jut_label, (ui_x + 75, y_offset))
 
-                if self.blindness_accumulator >= LIGHT_BLINDNESS and self.blindness_accumulator < MEDIUM_BLINDNESS:
-                    self.blindness_stage = "light"
-                elif self.blindness_accumulator >= MEDIUM_BLINDNESS and self.blindness_accumulator < HEAVY_BLINDNESS:
-                    self.blindness_stage = "medium"
-                elif self.blindness_accumulator >= HEAVY_BLINDNESS:
-                    self.blindness_stage = "heavy"
-                else:                    
-                    self.blindness_stage = None
+        if self.byakugan is not None:
+            self.toggles['byakugan'].draw(self.screen)
+            self.screen.blit(self.fonts['toggle'].render(f"Byakugan: {'ON' if self.toggles['byakugan'].state else 'OFF'}", True, (255, 255, 255)), (ui_x + 300, 355))
 
-                # Draw Effects
-                if self.current_chakra >= 10:
-                    frame = apply_blindness_effect(frame=frame, stage=self.blindness_stage)
-                           
-                    if picked_style:
-                        frame = style_factory.create_style(frame=frame, style_name=picked_styles, holistic_results=holistic_results)
+    def _handle_events(self) -> bool:
+        """Returns False if it is time to shut down/quit the main loop."""
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                return False
+            
+            elif event.type == KEYDOWN:
+                if event.key == K_TAB:
+                    self.ui_state['active_box'] = "spt" if self.ui_state['active_box'] == "style" else "style"
+                    continue 
 
-                    if not disable_bg:
-                        frame = bg.apply(
-                            frame=frame,
-                            segmenter_results=segmenter_results,
-                        )
-
-                    if not disable_jutsu:
-                        jutsu_factory.current_chakra = self.current_chakra
-                        frame, self.current_chakra = jutsu_factory.draw_jutsu_effect(
-                            frame=frame, 
-                            dt=dt, 
-                            blindness_stage=self.blindness_stage, 
-                            jutsu_active=self.jutsu_active, 
-                            disable_bg=disable_bg,
-                            target_sequence=self.target_sequence, 
-                            history=self.history, 
-                            holistic_results=holistic_results, 
-                            segmenter_results=segmenter_results, 
-                            mp_holistic=self.mp_holistic,
-                        )
-                    
-                    if not disable_sharingan:
-                        dojutsu_factory.current_chakra = self.current_chakra
-                        frame, self.blindness_counter, self.current_chakra = dojutsu_factory.draw_dojutsu_effect(
-                            frame=frame, 
-                            dt=dt, 
-                            x=x, 
-                            y=y, 
-                            blindness_stage=self.blindness_stage, 
-                            center=self.center_point, 
-                            kamui_active=self.kamui_active, 
-                            disable_susanoo=disable_susanoo,
-                            disable_mangekyou=disable_mangekyou,
-                            holistic_results=holistic_results, 
-                            mp_holistic=self.mp_holistic,
-                        )
-                    
-                frame = np.swapaxes(frame, 0, 1) # Convert to (width, height, channels) for Pygame
-                frame = pygame.surfarray.make_surface(frame) 
-
-                x = center_x + (amplitude * math.sin(frequency * i))
-                y += speed
-
-                if y >= self.height - 200:
-                    y = 20
-                
-                if self.current_chakra <= 0:
-                    self.jutsu_active = False
-                    self.is_jutsu_performed = False
-                    self.cached_jutsu_effect = None
-                    self.history = []
-                    if self.chakra_reset <= 0:
-                        print("Game Over! No resets left.")
-                        self.current_chakra = 0
-                        self.chakra_reset = 0
-                        sys.exit(0)
-                    self.chakra_reset -= 1
-                    self.current_chakra = self.base_chakra_level
-                    print(f"Chakra depleted! Resetting... Remaining resets: {self.chakra_reset}")
-
-                i += 1
-
-                self.screen.blit(frame, (0,0))
- 
-                ui_x = int(self.width) + 20 
-                ui_y = 50
-                bar_width, bar_height = 300, 25
-
-                chakra_percent = (self.current_chakra / self.base_chakra_level) if self.base_chakra_level > 0 else 0
-                fill_width = int(chakra_percent * bar_width)
-                fill_width = max(0, min(fill_width, bar_width)) # Clamp between 0 and max width
-
-                font = pygame.font.SysFont("Arial", 28, bold=True)
-                text_str = f'Chakra: {(chakra_percent * 100):.2f}% | Reset: {self.chakra_reset}'
-                text_surf = font.render(text_str, True, (255, 255, 255))
-                self.screen.blit(text_surf, (ui_x, ui_y - 35))
-
-                pygame.draw.rect(self.screen, (255, 255, 255), (ui_x, ui_y, bar_width, bar_height))
-
-                if fill_width > 0:
-                    pygame.draw.rect(self.screen, (255, 0, 0), (ui_x, ui_y, fill_width, bar_height))
-
-                if cached_target_seq.get("sequence_name") != self.target_sequence:
-                    cached_target_seq["sequence_name"] = list(self.target_sequence)
-                    cached_target_seq["target"] = []
-
-                    for target in self.target_sequence:
-                        img_path = CORRESPONDING_VISUAL_TO_SIGNS.get(target, None)
-                        if img_path and os.path.exists(img_path):
-                            image = pygame.image.load(img_path)
-                            image = pygame.transform.scale(image, new_image_size)
-                            cached_target_seq["target"].append(image)
-                        else:
-                            surf = pygame.Surface(new_image_size)
-                            surf.fill((100, 100, 100))
-                            cached_target_seq["target"].append(surf)
-
-                matched_count = len(self.history)
-                current_x_padding = 5
-                image_y = self.height + 100
-                for i, target_img in enumerate(cached_target_seq.get("target", [])):
-                    image_to_tint = target_img.copy()
-
-                    if i < matched_count:
-                        image_to_tint.fill((0, 80, 0), special_flags=pygame.BLEND_RGB_ADD)
-                    elif i == matched_count and len(self.history) > 0:
-                        image_to_tint.fill((120, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
-
-                    if self.is_broken_sequence:
-                        self.screen.blit(target_img, (current_x_padding, image_y))
-                    else:
-                        self.screen.blit(image_to_tint, (current_x_padding, image_y))
-
-                    current_x_padding += new_image_size[0] + 10
-
-                # kakashi mask | kakashi hair | obito fullfacemask | hidden leaf headband
-                title_surf = font_title.render(pick_character_style, True, (255, 255, 255))
-                self.screen.blit(title_surf, (ui_x, 150))
-                
-                # Draw Subtext (Available styles)
-                sub_surf = font_sub.render(style_sub_text, True, (180, 180, 180))
-                self.screen.blit(sub_surf, (ui_x, 180))
-
-                # Draw Input Box
-                input_box_rect = pygame.Rect(ui_x, 210, 300, 40)
-                pygame.draw.rect(self.screen, (255, 255, 255), input_box_rect, 2)
-                
-                # Draw Text and blinking cursor
-                cursor = "|" if time.time() % 1 > 0.5 else ""
-                txt_surf = font_input.render(input_text + cursor, True, (100, 255, 100))
-                self.screen.blit(txt_surf, (input_box_rect.x + 10, input_box_rect.y + 5))
-                
-                # Show currently picked style
-                if picked_style:
-                    current_style_surf = font_sub.render(f"Active: {picked_styles[0] if len(picked_styles) == 1 else ', '.join(ps for ps in picked_styles)}", True, (255, 200, 0))
-                    self.screen.blit(current_style_surf, (ui_x, 260))
-
-                bg_toggle.draw(self.screen)
-                    
-                bg_label = font_toggle.render(f"Background: {'ON' if bg_toggle.state else 'OFF'}", True, (255, 255, 255))
-                self.screen.blit(bg_label, (ui_x + 300, 305))
-
-                if self.sharingan_stage is not None:
-                    susanoo_toggle.draw(self.screen)
-                    mangekyou_toggle.draw(self.screen)
-                    sharingan_toggle.draw(self.screen)
-                    
-                    sus_label = font_toggle.render(f"Susanoo: {'ON' if susanoo_toggle.state else 'OFF'}", True, (255, 255, 255))
-                    self.screen.blit(sus_label, (ui_x + 75, 305))
-
-                    man_label = font_toggle.render(f"Mangekyou: {'ON' if mangekyou_toggle.state else 'OFF'}", True, (255, 255, 255))
-                    self.screen.blit(man_label, (ui_x + 75, 355))
-
-                    sha_label = font_toggle.render(f"Sharingan: {'ON' if sharingan_toggle.state else 'OFF'}", True, (255, 255, 255))
-                    self.screen.blit(sha_label, (ui_x + 75, 405))
-
-                if self.jutsu_active:
-                    jutsu_toggle.draw(self.screen)
-
-                    jut_label = font_toggle.render(f"Jutsu: {'ON' if sharingan_toggle.state else 'OFF'}", True, (255, 255, 255))
-                    if self.sharingan_stage is not None:
-                        self.screen.blit(jut_label, (ui_x + 75, 455))
-                    else:
-                        self.screen.blit(jut_label, (ui_x + 75, 305))
-
-                pygame.display.update()
-
-                for event in pygame.event.get():
-                    if event.type == QUIT:
-                        sys.exit(0)
+                if self.ui_state['active_box'] == "style":
+                    self._handle_style_input(event)
+                elif self.ui_state['active_box'] == "spt":
+                    self._handle_spt_input(event)
+                else:
+                    if event.key == K_q:
+                        return False
+                    elif event.key == K_r:
+                        self.jutsu_active = False
+                        self.cached_jutsu_effect = None
+                        self.history =[]
+                        self.cached_target_seq.clear()
+                        print("Reset sequence.")
                         
-                    elif event.type == KEYDOWN:
-                        # Handle typing in the input box
-                        if event.key == K_RETURN:
-                            raw_input = input_text.strip().lower()
-                            parts = [p.strip().replace(" ", "_") for p in raw_input.split(',')]
-                            
-                            if len(parts) > 1:
-                                first_style = parts[0]
-                                second_style = parts[1]
-                                
-                                # Validate both
-                                if first_style in STYLES and second_style in STYLES:
-                                    picked_styles = [first_style, second_style]
-                                    picked_style = f"{first_style}, {second_style}"
-                                else:
-                                    picked_styles = [STYLES[0]]
-                                    picked_style = STYLES[0]
-                            else:
-                                single_style = parts[0]
-                                # Validate single
-                                if single_style in STYLES:
-                                    picked_styles = [single_style]
-                                    picked_style = single_style
-                                else:
-                                    picked_styles = [STYLES[0]]
-                                    picked_style = STYLES[0]
-                                    
-                            input_text = "" # Clear box after pressing Enter
-                            print(f"Style changed to: {picked_style}")
-                            
-                        elif event.key == K_BACKSPACE:
-                            input_text = input_text[:-1]
-                            
-                        # Only allow "q" and "r" controls if the user ISN'T typing a word that contains them
-                        elif event.key == K_q and len(input_text) == 0:
-                            sys.exit(0)
-                            
-                        elif event.key == K_r and len(input_text) == 0:
-                            self.jutsu_active = False
-                            self.cached_jutsu_effect = None
-                            self.history = []
-                            cached_target_seq.clear()
-                            print("Reset sequence.")
-                            
-                        else:
-                            # Add typed characters to the input text
-                            if event.unicode.isprintable():
-                                input_text += event.unicode
-                                
-                    elif event.type == MOUSEBUTTONDOWN:
-                        if event.button == 1:
-                            if bg_toggle.handle_event(event):
-                                disable_bg = not bg_toggle.state
-                        
-                            if susanoo_toggle.handle_event(event):
-                                disable_susanoo = not susanoo_toggle.state
+            elif event.type == MOUSEBUTTONDOWN and event.button == 1:
+                for name, toggle in self.toggles.items():
+                    if name == 'jutsu' and not getattr(self, 'jutsu_active', False): continue         
+                    if name in ['susanoo', 'mangekyou', 'sharingan', 'ohirume'] and self.sharingan_stage is None: continue 
+                    if name == 'byakugan' and self.byakugan is None: continue
+                    toggle.handle_event(event)
 
-                            if mangekyou_toggle.handle_event(event):
-                                disable_mangekyou = not mangekyou_toggle.state
+                x_mouse, y_mouse = event.pos  
+                if x_mouse <= self.width and y_mouse <= self.height:
+                    self.is_clicked = not self.is_clicked
+                    self.center_point = [x_mouse, y_mouse]
+        return True
 
-                            if sharingan_toggle.handle_event(event):
-                                disable_sharingan = not sharingan_toggle.state
+    def _handle_style_input(self, event):
+        if event.key == K_RETURN:
+            raw_input = self.ui_state['input_text'].strip().lower()
+            parts =[p.strip().replace(" ", "_") for p in raw_input.split(',')]
+            
+            if len(parts) > 1:
+                style_1, style_2 = parts[0], parts[1]
+                if style_1 in STYLES and style_2 in STYLES:
+                    self.ui_state['picked_styles'] = [style_1, style_2]
+                    self.ui_state['picked_style'] = f"{style_1}, {style_2}"
+                else:
+                    self.ui_state['picked_styles'] = [STYLES[0]]
+                    self.ui_state['picked_style'] = STYLES[0]
+            elif parts and parts[0]:
+                single_style = parts[0]
+                if single_style in STYLES:
+                    self.ui_state['picked_styles'] = [single_style]
+                    self.ui_state['picked_style'] = single_style
+                else:
+                    self.ui_state['picked_styles'] = [STYLES[0]]
+                    self.ui_state['picked_style'] = STYLES[0]
+                    
+            self.ui_state['input_text'] = "" 
+            self.ui_state['active_box'] = None
+            print(f"Style changed to: {self.ui_state['picked_style']}")
+            
+        elif event.key == K_BACKSPACE:
+            self.ui_state['input_text'] = self.ui_state['input_text'][:-1]
+            
+        elif event.unicode.isprintable():
+            self.ui_state['input_text'] += event.unicode
 
-                            if jutsu_toggle.handle_event(event):
-                                disable_jutsu = not jutsu_toggle.state
+    def _handle_spt_input(self, event):
+        if event.key == K_RETURN:
+            raw_spt_input = self.ui_state['spt_input_text'].strip().lower()
+            self.ui_state['six_paths_technique'] = raw_spt_input.replace(" ", "_")
+            self.ui_state['spt_input_text'] = ""
+            self.ui_state['active_box'] = None
+            
+        elif event.key == K_BACKSPACE:
+            self.ui_state['spt_input_text'] = self.ui_state['spt_input_text'][:-1]
+            
+        elif event.unicode.isprintable():
+            self.ui_state['spt_input_text'] += event.unicode
 
-                            x_mouse, y_mouse = event.pos  
-                            if x_mouse <= self.width and y_mouse <= self.height:
-                                self.kamui_active = not self.kamui_active
-                                self.center_point = [x_mouse, y_mouse]
-        except Exception as e:
-            print(f"Error in main: {e}")
-        finally:
-            pygame.quit()
+    def _cleanup(self):
+        """Teardown windows and cap instances elegantly"""
+        pygame.quit()
+        if hasattr(self, 'cap') and self.cap is not None:
             self.cap.release()
-            cv2.destroyAllWindows()
+        cv2.destroyAllWindows()
 
 def main():
     app = NarutoAR()
@@ -692,7 +742,7 @@ def main():
     
     available = list(JUTSU_CATALOG.keys()) + list(MANGEKYOU_ABILITIES.keys())
     sub_text = f"Available: {', '.join(available)}"
-    choice = pygame_input_screen(app.screen, "Choose technique (e.g., chidori, sharingan):", sub_text).lower()
+    choice = pygame_input_screen(app.screen, "Choose technique (e.g., chidori, sharingan | rinnegan | byakugan):", sub_text).lower()
     
     choices_list =[c.strip() for c in choice.split(",")]
     final_load_string = process_techniques(current_user, player_data, choices_list, app=app)
@@ -701,8 +751,6 @@ def main():
     
     try:
         app.run()
-    except:
-        pass
     finally:
         save_player_data(
             current_user, 
